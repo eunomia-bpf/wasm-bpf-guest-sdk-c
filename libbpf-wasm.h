@@ -193,8 +193,12 @@ static int bpf_object__attach_skeleton(struct bpf_object_skeleton* s) {
         struct bpf_prog_skeleton* prog_skel =
             (void*)s->progs + i * s->prog_skel_sz;
         if (prog_skel->prog && *prog_skel->prog) {
-            err = wasm_attach_bpf_program(s->obj, (*prog_skel->prog)->name,
-                                          (*prog_skel->prog)->attach_target);
+            const char* attach_target = (*prog_skel->prog)->attach_target;
+            err = wasm_attach_bpf_program(
+                s->obj, (*prog_skel->prog)->name,
+                (attach_target == NULL || strcmp(attach_target, "") == 0)
+                    ? NULL
+                    : attach_target);
             if (err < 0)
                 return err;
         }
