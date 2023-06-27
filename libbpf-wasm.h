@@ -188,13 +188,16 @@ static int bpf_object__load_skeleton(struct bpf_object_skeleton* s) {
 
 static int bpf_object__attach_skeleton(struct bpf_object_skeleton* s) {
     assert(s && s->data && s->data_sz);
-
+    int err;
     for (int i = 0; i < s->prog_cnt; i++) {
         struct bpf_prog_skeleton* prog_skel =
             (void*)s->progs + i * s->prog_skel_sz;
-        if (prog_skel->prog && *prog_skel->prog)
-            wasm_attach_bpf_program(s->obj, (*prog_skel->prog)->name,
-                                    (*prog_skel->prog)->attach_target);
+        if (prog_skel->prog && *prog_skel->prog) {
+            err = wasm_attach_bpf_program(s->obj, (*prog_skel->prog)->name,
+                                          (*prog_skel->prog)->attach_target);
+            if (err < 0)
+                return err;
+        }
     }
     return 0;
 }
