@@ -28,6 +28,15 @@ ATTR("wasm_attach_bpf_program")
 int wasm_attach_bpf_program(bpf_object_skel obj,
                             const char* name,
                             const char* attach_target);
+/// attach a bpf program to a hook point named by a file descriptor.
+/// a negative target_fd means "no target"; the runtime chooses the hook from
+/// the program's section, and only sockops resolves target_fd to a preopened
+/// cgroup directory. xdp keeps the interface path via
+/// bpf_set_prog_attach_target.
+ATTR("wasm_attach_bpf_program_fd")
+int wasm_attach_bpf_program_fd(bpf_object_skel obj,
+                               const char* name,
+                               int target_fd);
 /// poll a bpf buffer, and call a wasm callback indicated by sample_func.
 /// the first time to call this function will open and create a bpf buffer.
 ATTR("wasm_bpf_buffer_poll")
@@ -57,6 +66,9 @@ struct bpf_program {
     bpf_object_skel obj_ptr;
     char name[64];
     char attach_target[128];
+    int attach_target_fd;
+    /* fd 0 is valid and negative means "no target", so a flag marks fd use */
+    bool attach_by_fd;
     bool autoattach;
 };
 
@@ -101,6 +113,16 @@ struct bpf_object_skeleton {
 static void bpf_set_prog_attach_target(struct bpf_program* prog,
                                        char* attach_target) {
     strncpy(prog->attach_target, attach_target, sizeof(prog->attach_target));
+    prog->attach_by_fd = false;
+}
+
+/// set the attach target by file descriptor (e.g. a preopened cgroup dir fd
+/// for sockops). the runtime still selects the hook from the section name;
+/// xdp keeps using bpf_set_prog_attach_target above.
+static void bpf_set_prog_attach_target_fd(struct bpf_program* prog,
+                                          int target_fd) {
+    prog->attach_target_fd = target_fd;
+    prog->attach_by_fd = true;
 }
 
 /* handle errno-based (e.g., syscall or libc) errors according to libbpf's
@@ -193,6 +215,14 @@ static int bpf_object__attach_skeleton(struct bpf_object_skeleton* s) {
         struct bpf_prog_skeleton* prog_skel =
             (void*)s->progs + i * s->prog_skel_sz;
         if (prog_skel->prog && *prog_skel->prog) {
+            if ((*prog_skel->prog)->attach_by_fd) {
+                err = wasm_attach_bpf_program_fd(
+                    s->obj, (*prog_skel->prog)->name,
+                    (*prog_skel->prog)->attach_target_fd);
+                if (err < 0)
+                    return err;
+                continue;
+            }
             const char* attach_target = (*prog_skel->prog)->attach_target;
             err = wasm_attach_bpf_program(
                 s->obj, (*prog_skel->prog)->name,
