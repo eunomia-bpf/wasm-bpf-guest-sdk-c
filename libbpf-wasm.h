@@ -113,6 +113,7 @@ struct bpf_object_skeleton {
 static void bpf_set_prog_attach_target(struct bpf_program* prog,
                                        char* attach_target) {
     strncpy(prog->attach_target, attach_target, sizeof(prog->attach_target));
+    prog->attach_by_fd = false;
 }
 
 /// set the attach target by file descriptor (e.g. a preopened cgroup dir fd
